@@ -1,0 +1,6 @@
+name=pdll Test Host
+author=pdll
+description=Loads the bouncing-ball library at runtime with pdll
+bundleID=ca.conjurers.pdll.testhost
+version=1.0.0
+buildNumber=1

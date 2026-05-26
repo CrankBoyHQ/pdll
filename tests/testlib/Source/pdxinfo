@@ -1,0 +1,6 @@
+name=pdll Test Ball
+author=pdll
+description=A loadable pdll library that draws a bouncing ball
+bundleID=ca.conjurers.pdll.testlib
+version=1.0.0
+buildNumber=1

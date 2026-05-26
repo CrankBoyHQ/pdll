@@ -1,0 +1,8 @@
+build/
+*.pdx
+*.o
+*.so
+*.dll
+*.bin
+*.elf
+*.dylib
