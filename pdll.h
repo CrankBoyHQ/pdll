@@ -522,9 +522,9 @@ pdll_t *pdll_open(PlaydateAPI *pd, const char *path, uint32_t flags) {
   }
 
   // copy the leading fields at offset 0 so the handle looks like a PlaydateAPI
-  lib->playdate.system = pd->system;
-  lib->playdate.file = pd->file;
-  lib->playdate.graphics = pd->graphics;
+  lib->_playdate_slice.system = pd->system;
+  lib->_playdate_slice.file = pd->file;
+  lib->_playdate_slice.graphics = pd->graphics;
   lib->playdate_ptr = pd;
   lib->path = path;
   lib->flags = flags;
