@@ -7,6 +7,9 @@
 
 #ifdef __cplusplus
 extern "C" {
+#define PDLL_DEFAULT_ARG(x) =(x)
+#else
+#define PDLL_DEFAULT_ARG(x)
 #endif
 
 #include "pd_api.h"
@@ -26,9 +29,6 @@ typedef int (*pdll_eventhandler_t)(PlaydateAPI *, PDSystemEvent, uint32_t);
 #define PDLL_FILE_DATA (1u << 1) /* per-game data   (kFileReadData) */
 #define PDLL_NO_INIT (1u << 2)  /* don't run eventHandler's init */
 #define PDLL_NO_TERM (1u << 3) /* don't run eventHandler's close */
-#define PDLL_ALIGN_32 (1u << 4)
-#define PDLL_ALIGN_256 (1u << 5)
-#define PDLL_ALIGN_4K (1u << 6)
 
 typedef struct pdll_s {
   struct {
@@ -124,7 +124,8 @@ typedef struct {
   }
 
 const char *pdll_get_error(void);
-pdll_t *pdll_open(PlaydateAPI *pd, const char *path, uint32_t flags);
+pdll_t *pdll_open(PlaydateAPI *pd, const char *path, uint32_t flags,
+                  uint32_t align PDLL_DEFAULT_ARG(2));
 void pdll_close(pdll_t *lib);
 void *pdll_symbol(pdll_t *lib, const char *symbol);
 
@@ -171,14 +172,10 @@ static void pdll__seterr(const char *fmt, ...) {
   pdll__pd->system->realloc(msg, 0);
 }
 
-static uint32_t pdll__alignment(uint32_t flags) {
-  if (flags & PDLL_ALIGN_4K)
-    return 4096;
-  if (flags & PDLL_ALIGN_256)
-    return 256;
-  if (flags & PDLL_ALIGN_32)
-    return 32;
-  return 2;
+static uint32_t pdll__align(uint32_t align) {
+  if (align < 2) align = 2;
+  if (align & (align - 1)) return 0;
+  return align;
 }
 
 static int pdll__fsflags(uint32_t flags, FileOptions *out) {
@@ -234,12 +231,18 @@ static int pdll__uz_read(struct uzlib_uncomp *d) {
   return pdll__uz_inbuf[0];
 }
 
-pdll_t *pdll_open(PlaydateAPI *pd, const char *path, uint32_t flags) {
+pdll_t *pdll_open(PlaydateAPI *pd, const char *path, uint32_t flags,
+                  uint32_t align) {
   pdll__pd = pd;
   FileOptions fo;
   if (!pdll__fsflags(flags, &fo)) {
     pdll__seterr(
         "pdll_open: no filesystem flag (need PDLL_FILE_PDX or PDLL_FILE_DATA)");
+    return NULL;
+  }
+  align = pdll__align(align);
+  if (!align) {
+    pdll__seterr("pdll_open: align is not a power of two");
     return NULL;
   }
 
@@ -310,8 +313,7 @@ pdll_t *pdll_open(PlaydateAPI *pd, const char *path, uint32_t flags) {
     return NULL;
   }
 
-  /* allocate the text region */
-  uint32_t align = pdll__alignment(flags);
+  /* allocate the text region; `align` already normalised above */
   size_t slack = (align > 8) ? (align - 1) : 0;
   void *raw = pd->system->realloc(NULL, (size_t)hdr.p_memsz + slack);
   if (!raw) {
@@ -444,12 +446,18 @@ static int pdll__write_temp(const void *data, int len, char *tmppath,
 #endif
 }
 
-pdll_t *pdll_open(PlaydateAPI *pd, const char *path, uint32_t flags) {
+pdll_t *pdll_open(PlaydateAPI *pd, const char *path, uint32_t flags,
+                  uint32_t align) {
   pdll__pd = pd;
   FileOptions fo;
   if (!pdll__fsflags(flags, &fo)) {
     pdll__seterr(
         "pdll_open: no filesystem flag (need PDLL_FILE_PDX or PDLL_FILE_DATA)");
+    return NULL;
+  }
+  align = pdll__align(align);
+  if (!align) {
+    pdll__seterr("pdll_open: align is not a power of two");
     return NULL;
   }
 
