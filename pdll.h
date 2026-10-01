@@ -30,6 +30,14 @@ typedef int (*pdll_eventhandler_t)(PlaydateAPI *, PDSystemEvent, uint32_t);
 #define PDLL_NO_INIT (1u << 2)  /* don't run eventHandler's init */
 #define PDLL_NO_TERM (1u << 3) /* don't run eventHandler's close */
 
+// pdc writes p_memsz as p_filesz + the size of .bss, without the alignment
+// gap in front of .bss, so the end of .bss can lie up to (.bss alignment - 1)
+// bytes past p_memsz. Allocate and zero this much more (covers .bss
+// alignments up to this value).
+#ifndef PDLL_BSS_SLACK
+#define PDLL_BSS_SLACK 256u
+#endif
+
 typedef struct pdll_s {
   struct {
     const struct playdate_sys *system;
@@ -248,7 +256,7 @@ pdll_t *pdll_open(PlaydateAPI *pd, const char *path, uint32_t flags,
 
   char name[256];
   size_t pl = strlen(path);
-  if (pl + 5 > sizeof(name)) /* + ".bin\0" */
+  if (pl + 6 > sizeof(name)) /* + ".pdll\0" */
   {
     pdll__seterr("pdll_open: path too long");
     return NULL;
@@ -258,7 +266,13 @@ pdll_t *pdll_open(PlaydateAPI *pd, const char *path, uint32_t flags,
 
   SDFile *file = pd->file->open(name, fo);
   if (!file) {
-    pdll__seterr("pdll_open: cannot open '%s'", name);
+    /* the same pdex.bin image may also be shipped as <path>.pdll */
+    memcpy(name + pl, ".pdll", 6);
+    file = pd->file->open(name, fo);
+  }
+  if (!file) {
+    memcpy(name + pl, ".bin", 5);
+    pdll__seterr("pdll_open: cannot open '%s' (or .pdll)", name);
     return NULL;
   }
 
@@ -315,7 +329,8 @@ pdll_t *pdll_open(PlaydateAPI *pd, const char *path, uint32_t flags,
 
   /* allocate the text region; `align` already normalised above */
   size_t slack = (align > 8) ? (align - 1) : 0;
-  void *raw = pd->system->realloc(NULL, (size_t)hdr.p_memsz + slack);
+  size_t memsz = (size_t)hdr.p_memsz + PDLL_BSS_SLACK;
+  void *raw = pd->system->realloc(NULL, memsz + slack);
   if (!raw) {
     pdll__seterr("pdll_open: out of memory (%u-byte image)",
                  (unsigned)hdr.p_memsz);
@@ -326,7 +341,7 @@ pdll_t *pdll_open(PlaydateAPI *pd, const char *path, uint32_t flags,
 
   /* copy text + zero bss */
   memcpy((void *)base, dec, hdr.p_filesz);
-  memset((void *)(base + hdr.p_filesz), 0, hdr.p_memsz - hdr.p_filesz);
+  memset((void *)(base + hdr.p_filesz), 0, memsz - hdr.p_filesz);
 
   /* apply relocations */
   const uint32_t *relocs = (const uint32_t *)(dec + hdr.p_filesz);
@@ -475,7 +490,10 @@ pdll_t *pdll_open(PlaydateAPI *pd, const char *path, uint32_t flags,
     return NULL;
   }
 
-  pdll_t *lib = (pdll_t *)calloc(1, sizeof(pdll_t));
+  /* malloc, not calloc: pdll_close() frees it through system->realloc */
+  pdll_t *lib = (pdll_t *)malloc(sizeof(pdll_t));
+  if (lib)
+    memset(lib, 0, sizeof(*lib));
   if (!lib) {
     free(bytes);
     pdll__seterr("pdll_open: out of memory");

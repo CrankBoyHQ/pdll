@@ -31,7 +31,7 @@ int eventHandler(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
 Main executable:
 
 ```c
-// open mylibrary.{bin, so, dll dylib} from
+// open mylibrary.{bin (or .pdll), so, dll, dylib} from
 // pdx directory and align it to 256 bytes
 pdll_t* mylib = pdll_open("mylibrary", PDLL_FILE_PDX | PDLL_ALIGN_256);
 int (*foo)(void) = pdll_symbol(mylib, "foo");
